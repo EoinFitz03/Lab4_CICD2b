@@ -86,15 +86,37 @@ def get_project_with_owner(project_id: int, db: Session = Depends(get_db)):
     return proj
 
 
+# --- NEW: Projects PUT (full replace only) ---
+@app.put("/api/projects/{project_id}", response_model=ProjectRead)
+def replace_project(project_id: int, payload: ProjectCreate, db: Session = Depends(get_db)):
+    proj = db.get(ProjectDB, project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    owner = db.get(UserDB, payload.owner_id)
+    if not owner:
+        raise HTTPException(status_code=404, detail="Owner user not found")
+
+    proj.name = payload.name
+    proj.description = payload.description
+    proj.owner_id = payload.owner_id
+
+    try:
+        db.commit()
+        db.refresh(proj)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Project update failed")
+    return proj
+
+
 # Nested Routes
 @app.get("/api/users/{user_id}/projects", response_model=list[ProjectRead])
 def get_user_projects(user_id: int, db: Session = Depends(get_db)):
     stmt = select(ProjectDB).where(ProjectDB.owner_id == user_id)
-    # space it out for debugging
     result = db.execute(stmt)
     rows = result.scalars().all()
     return rows
-    # return db.execute(stmt).scalars().all()
 
 
 @app.post("/api/users/{user_id}/projects", response_model=ProjectRead, status_code=201)
@@ -105,7 +127,7 @@ def create_user_project(user_id: int, project: ProjectCreateForUser, db: Session
 
     proj = ProjectDB(
         name=project.name,
-        description=project.description,   # <-- set it
+        description=project.description,
         owner_id=user_id
     )
     db.add(proj)
@@ -117,11 +139,9 @@ def create_user_project(user_id: int, project: ProjectCreateForUser, db: Session
 @app.get("/api/users", response_model=list[UserRead])
 def list_users(db: Session = Depends(get_db)):
     stmt = select(UserDB).order_by(UserDB.id)
-    # Useful for debugging
     result = db.execute(stmt)
     users = result.scalars().all()
     return users
-    # return list(db.execute(stmt).scalars())
 
 
 @app.get("/api/users/{user_id}", response_model=UserRead)
@@ -142,6 +162,32 @@ def add_user(payload: UserCreate, db: Session = Depends(get_db)):
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="User already exists")
+    return user
+
+
+#  Users PUT 
+@app.put("/api/users/{user_id}", response_model=UserRead)
+def replace_user(user_id: int, payload: UserCreate, db: Session = Depends(get_db)):
+    user = db.get(UserDB, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Update user fields with new data
+    user.name = payload.name
+    user.email = payload.email
+    user.age = payload.age
+    user.student_id = payload.student_id
+
+    # Try to commit the changes to the database
+    try:
+        db.commit()
+        # Refresh the user object with the latest DB state
+        db.refresh(user)
+    except IntegrityError:
+        # If a constraint is violated,
+        # it will rollback to its original state 
+        db.rollback()
+        raise HTTPException(status_code=409, detail="User update failed")
     return user
 
 
