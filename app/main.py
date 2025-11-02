@@ -86,7 +86,8 @@ def get_project_with_owner(project_id: int, db: Session = Depends(get_db)):
     return proj
 
 
-# --- NEW: Projects PUT (full replace only) ---
+#  Projects PUT 
+# comments below both work the same 
 @app.put("/api/projects/{project_id}", response_model=ProjectRead)
 def replace_project(project_id: int, payload: ProjectCreate, db: Session = Depends(get_db)):
     proj = db.get(ProjectDB, project_id)
